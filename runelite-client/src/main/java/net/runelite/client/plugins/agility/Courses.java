@@ -47,6 +47,7 @@ enum Courses
 	POLLNIVNEACH(890.0, 540, 13358),
 	RELLEKA(780.0, 475, 10553),
 	PRIFDDINAS(1337.0, 1037, 12895),
+	DORGESH_KAAN_AGILITY(2750.0, 2432, 10833),
 	ARDOUGNE(793.0, 529, 10547);
 
 	private final static Map<Integer, Courses> coursesByRegion;

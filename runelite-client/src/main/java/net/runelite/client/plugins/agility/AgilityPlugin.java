@@ -30,11 +30,17 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.AccessLevel;
 import lombok.Getter;
 import lombok.extern.slf4j.Slf4j;
+import net.runelite.api.ChatMessageType;
 import net.runelite.api.Client;
+import net.runelite.api.InventoryID;
+import net.runelite.api.Item;
 import net.runelite.api.ItemID;
 import static net.runelite.api.ItemID.AGILITY_ARENA_TICKET;
 import net.runelite.api.Player;
@@ -44,6 +50,7 @@ import net.runelite.api.Tile;
 import net.runelite.api.TileItem;
 import net.runelite.api.TileObject;
 import net.runelite.api.coords.WorldPoint;
+import net.runelite.api.events.ChatMessage;
 import net.runelite.api.events.DecorativeObjectChanged;
 import net.runelite.api.events.DecorativeObjectDespawned;
 import net.runelite.api.events.DecorativeObjectSpawned;
@@ -55,6 +62,7 @@ import net.runelite.api.events.GameTick;
 import net.runelite.api.events.GroundObjectChanged;
 import net.runelite.api.events.GroundObjectDespawned;
 import net.runelite.api.events.GroundObjectSpawned;
+import net.runelite.api.events.ItemContainerChanged;
 import net.runelite.api.events.ItemDespawned;
 import net.runelite.api.events.ItemSpawned;
 import net.runelite.api.events.StatChanged;
@@ -74,6 +82,7 @@ import net.runelite.client.plugins.xptracker.XpTrackerPlugin;
 import net.runelite.client.plugins.xptracker.XpTrackerService;
 import net.runelite.client.ui.overlay.OverlayManager;
 import net.runelite.client.ui.overlay.infobox.InfoBoxManager;
+import net.runelite.client.util.Text;
 
 @PluginDescriptor(
 	name = "Agility",
@@ -85,6 +94,8 @@ import net.runelite.client.ui.overlay.infobox.InfoBoxManager;
 public class AgilityPlugin extends Plugin
 {
 	private static final int AGILITY_ARENA_REGION_ID = 11157;
+
+	private static final Pattern CHAT_DORGESH_KAAN_PART_REGEX = Pattern.compile("The engineer asks you to get a (?<light>.+) or a (?<heavy>.+)\\.");
 
 	@Getter
 	private final Map<TileObject, Obstacle> obstacles = new HashMap<>();
@@ -102,9 +113,13 @@ public class AgilityPlugin extends Plugin
 	private LapCounterOverlay lapCounterOverlay;
 
 	@Inject
+	private DorgeshKaanPartsOverlay dorgeshKaanPartsOverlay;
+
+	@Inject
 	private Notifier notifier;
 
 	@Inject
+	@Getter(AccessLevel.PACKAGE)
 	private Client client;
 
 	@Inject
@@ -131,6 +146,17 @@ public class AgilityPlugin extends Plugin
 	@Getter(AccessLevel.PACKAGE)
 	private Tile stickTile;
 
+	@Getter
+	@Nullable
+	private DorgeshKaanPart currentHeavyPart;
+
+	@Getter
+	@Nullable
+	private DorgeshKaanPart currentLightPart;
+
+	@Getter
+	private Item[] inventoryItems;
+
 	@Provides
 	AgilityConfig getConfig(ConfigManager configManager)
 	{
@@ -142,6 +168,7 @@ public class AgilityPlugin extends Plugin
 	{
 		overlayManager.add(agilityOverlay);
 		overlayManager.add(lapCounterOverlay);
+		overlayManager.add(dorgeshKaanPartsOverlay);
 		agilityLevel = client.getBoostedSkillLevel(Skill.AGILITY);
 	}
 
@@ -150,11 +177,14 @@ public class AgilityPlugin extends Plugin
 	{
 		overlayManager.remove(agilityOverlay);
 		overlayManager.remove(lapCounterOverlay);
+		overlayManager.remove(dorgeshKaanPartsOverlay);
 		marksOfGrace.clear();
 		obstacles.clear();
 		session = null;
 		agilityLevel = 0;
 		stickTile = null;
+		currentLightPart = null;
+		currentHeavyPart = null;
 	}
 
 	@Subscribe
@@ -167,6 +197,8 @@ public class AgilityPlugin extends Plugin
 				session = null;
 				lastArenaTicketPosition = null;
 				removeAgilityArenaTimer();
+				currentLightPart = null;
+				currentHeavyPart = null;
 				break;
 			case LOADING:
 				marksOfGrace.clear();
@@ -298,6 +330,39 @@ public class AgilityPlugin extends Plugin
 				}
 			}
 		}
+	}
+
+	@Subscribe
+	public void onChatMessage(ChatMessage event)
+	{
+		if (event.getType() != ChatMessageType.GAMEMESSAGE || event.getType() == ChatMessageType.SPAM)
+		{
+			return;
+		}
+
+		String chatMsg = Text.removeTags(event.getMessage());
+
+		Matcher m = CHAT_DORGESH_KAAN_PART_REGEX.matcher(chatMsg);
+
+		if (m.find())
+		{
+			String heavyPartName = m.group("heavy");
+			currentHeavyPart = DorgeshKaanPart.findPart(heavyPartName);
+
+			String lightPartName = m.group("light");
+			currentLightPart = DorgeshKaanPart.findPart(lightPartName);
+		}
+	}
+
+	@Subscribe
+	public void onItemContainerChanged(final ItemContainerChanged event)
+	{
+		if (event.getItemContainer() != client.getItemContainer(InventoryID.INVENTORY))
+		{
+			return;
+		}
+
+		inventoryItems = event.getItemContainer().getItems();
 	}
 
 	private boolean isInAgilityArena()

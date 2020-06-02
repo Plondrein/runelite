@@ -220,4 +220,15 @@ public interface AgilityConfig extends Config
 	{
 		return Color.RED;
 	}
+
+	@ConfigItem(
+		keyName = "showDorgeshKaanParts",
+		name = "Dorgesh-Kaan Course Parts",
+		description = "Show currently needed parts for the Dorgesh-Kaan course",
+		position = 11
+	)
+	default boolean showDorgeshKaanParts()
+	{
+		return true;
+	}
 }
